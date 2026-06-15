@@ -1,0 +1,9 @@
+2024年人工智能领域迎来重大变革。OpenAI发布了GPT-4o模型，该模型由Sam Altman领导的团队开发，具备多模态能力，可以同时处理文本、图像和音频。与此同时，Anthropic公司推出了Claude 3.5 Sonnet，由Dario Amodei和Daniela Amodei兄妹创立的团队打造，在编程和推理任务上表现出色。
+
+Google也不甘落后，发布了Gemini 2.0，由DeepMind团队在伦敦研发。微软则与OpenAI深度合作，由Satya Nadella宣布将在Azure云平台深度集成GPT-4o。
+
+在中国，深度求索（DeepSeek）发布了DeepSeek-V3模型，由梁文锋创立的团队开发，以极低的训练成本达到了接近GPT-4的性能。阿里巴巴推出了通义千问2.5，百度发布了文心一言4.0。
+
+这些模型在MMLU基准测试、HumanEval编程测试和GSM8K数学推理测试上展开了激烈竞争。其中GPT-4o在MMLU上得分88.7%，Claude 3.5 Sonnet在HumanEval上得分92.0%，DeepSeek-V3在GSM8K上得分90.3%。
+
+Meta则选择开源路线，Mark Zuckerberg宣布发布Llama 3.1，包含405B参数版本。法国的Mistral AI也不甘示弱，推出了Mistral Large 2。
