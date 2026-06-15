@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, Request, Header
 from db.lancedb_client import client as db
 from db.models import SearchResponse
+from services.embedder import get_embedder
 from routes.auth import get_current_user
 
 router = APIRouter(tags=["search"])
@@ -26,7 +27,7 @@ def semantic_search(
             subgraph_edges=[],
         )
 
-    embedder = request.app.state.embedder
+    embedder = request.app.state.embedder or get_embedder()
     query_vec = embedder.embed(q.strip())
 
     # 计算所有节点的余弦相似度

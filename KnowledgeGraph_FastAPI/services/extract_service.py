@@ -58,8 +58,8 @@ async def run_extraction(workspace_id: str, entity_type: str):
 
         # Phase 5: Embedding
         _jobs[job_id].update(phase="embedding", progress=0.85)
-        from services.embedder import Embedder
-        embedder = Embedder()
+        from services.embedder import get_embedder
+        embedder = get_embedder()
         labels = [n["label"] for n in merged["nodes"]]
         vectors = await asyncio.to_thread(embedder.embed_batch, labels)
         embedding_cache = {

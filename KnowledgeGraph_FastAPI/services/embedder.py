@@ -1,5 +1,10 @@
 from sentence_transformers import SentenceTransformer
 import numpy as np
+import logging
+
+logger = logging.getLogger(__name__)
+
+_embedder: "Embedder | None" = None
 
 
 class Embedder:
@@ -16,3 +21,14 @@ class Embedder:
 
     def similarity(self, query_vec: list[float], target_vec: list[float]) -> float:
         return float(np.dot(query_vec, target_vec))
+
+
+def get_embedder() -> Embedder | None:
+    global _embedder
+    if _embedder is None:
+        try:
+            _embedder = Embedder()
+        except Exception as e:
+            logger.warning(f"Failed to load embedding model: {e}. Semantic search will be unavailable.")
+            _embedder = None
+    return _embedder

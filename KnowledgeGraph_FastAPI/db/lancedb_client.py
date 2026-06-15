@@ -129,4 +129,14 @@ class LanceDBClient:
 # Lazy imports to avoid circular deps
 from db.models import Workspace, FileRecord, GraphSnapshot
 
-client = LanceDBClient()
+_client: LanceDBClient | None = None
+
+
+def get_client() -> LanceDBClient:
+    global _client
+    if _client is None:
+        _client = LanceDBClient()
+    return _client
+
+# Restore module-level client singleton
+client = get_client()

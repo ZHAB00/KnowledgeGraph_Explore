@@ -7,4 +7,5 @@ TEST_PASSWORD = os.getenv("TEST_PASSWORD", "demo123")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
-LANCE_DB_PATH = os.getenv("LANCE_DB_PATH", "/app/lancedb_data")
+import tempfile
+LANCE_DB_PATH = os.getenv("LANCE_DB_PATH", os.path.join(tempfile.gettempdir(), "kg_lancedb_data"))

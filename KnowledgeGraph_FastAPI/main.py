@@ -8,8 +8,7 @@ from routes.search import router as search_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from services.embedder import Embedder
-    app.state.embedder = Embedder()
+    app.state.embedder = None
     yield
 
 
