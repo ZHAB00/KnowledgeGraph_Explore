@@ -1,19 +1,19 @@
+import bcrypt
 from fastapi import APIRouter, HTTPException
-from passlib.hash import bcrypt
 from jose import jwt
 from db.models import LoginRequest, LoginResponse
 from config import SECRET_KEY, TEST_USERNAME, TEST_PASSWORD
 
 router = APIRouter(tags=["auth"])
 
-_password_hash = bcrypt.hash(TEST_PASSWORD)
+_password_hash = bcrypt.hashpw(TEST_PASSWORD.encode(), bcrypt.gensalt())
 
 
 @router.post("/auth/login", response_model=LoginResponse)
 def login(req: LoginRequest):
     if req.username != TEST_USERNAME:
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    if not bcrypt.verify(req.password, _password_hash):
+    if not bcrypt.checkpw(req.password.encode(), _password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     token = jwt.encode({"sub": req.username}, SECRET_KEY, algorithm="HS256")
