@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>知识图谱 · 多社区 · 窗口百分比</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        :root {
+            --bg: #f8f9fa;
+            --surface: #ffffff;
+            --text-primary: #1a1a1a;
+            --text-muted: #888888;
+            --accent: #2c3e50;
+            --scale-factor: 1;
+            --window-width-percent: 100;
+            --window-height-percent: 100;
+        }
+
+        * { margin:0; padding:0; box-sizing:border-box; }
+
+        body {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background: #e8eaed;
+            font-family: 'JetBrains Mono', 'PingFang SC', 'Microsoft YaHei', monospace;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .graph-window {
+            position: relative;
+            width: calc(var(--window-width-percent) * 1vw);
+            height: calc(var(--window-height-percent) * 1vh);
+            border: 2px dashed #999;
+            background: var(--bg);
+            overflow: hidden;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.1);
+            transform: scale(var(--scale-factor));
+            transform-origin: center center;
+            transition: width 0.2s, height 0.2s, transform 0.2s;
+        }
+
+        .bg-grid {
+            position: absolute; top:0; left:0; width:100%; height:100%;
+            pointer-events: none; z-index:0;
+            background-image:
+                linear-gradient(rgba(0,0,0,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,0,0,0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+
+        .particles-layer {
+            position: absolute; top:0; left:0; width:100%; height:100%;
+            pointer-events: none; z-index:0;
+        }
+        .bg-particle {
+            position: absolute; width:6px; height:6px; opacity:0.15;
+            animation: particleDrift 16s linear infinite;
+        }
+        .bg-particle::before, .bg-particle::after {
+            content:''; position:absolute; background:#888;
+        }
+        .bg-particle::before { width:100%; height:1px; top:50%; left:0; transform:translateY(-50%); }
+        .bg-particle::after { width:1px; height:100%; left:50%; top:0; transform:translateX(-50%); }
+        @keyframes particleDrift {
+            0% { transform:translate(0,0) scale(0.8); opacity:0.1; }
+            25% { transform:translate(15px,-15px) scale(1.2); opacity:0.2; }
+            50% { transform:translate(-10px,-25px) scale(0.9); opacity:0.12; }
+            75% { transform:translate(-20px,10px) scale(1.1); opacity:0.18; }
+            100% { transform:translate(0,0) scale(0.8); opacity:0.1; }
+        }
+
+        #graph-svg { width:100%; height:100%; cursor:grab; position:relative; z-index:1; }
+        #graph-svg:active { cursor:grabbing; }
+        #graph-svg.dragging-node { cursor:grabbing; }
+
+        .node-group { cursor:pointer; }
+        .node-circle { stroke:rgba(0,0,0,0.15); stroke-width:1.5px; transition:r 0.2s; }
+        .link-line { stroke:#b0b0b0; stroke-width:1px; pointer-events:none; transition:stroke 0.3s; }
+        .link-highlight { stroke:#444 !important; stroke-width:2px !important; }
+        .link-dim { stroke:#ddd !important; stroke-width:0.6px !important; }
+        .flow-line {
+            fill:none; stroke:#c0c0c0; stroke-width:1.2px;
+            stroke-dasharray:4 14; pointer-events:none;
+            animation:flowDash 3s linear infinite; transition:opacity 0.3s;
+        }
+        @keyframes flowDash { to { stroke-dashoffset:-36; } }
+        .flow-line.hidden-flow { opacity:0; }
+        .node-label {
+            font-family:'JetBrains Mono',monospace; font-size:10px;
+            text-anchor:middle; pointer-events:none; letter-spacing:0.03em;
+        }
+
+        .tooltip {
+            position:fixed; pointer-events:none; z-index:100;
+            background:var(--surface); border:1px solid #ddd; border-radius:8px;
+            padding:6px 12px; font-size:0.8rem; font-weight:500;
+            opacity:0; transform:translate(-50%,-130%); transition:opacity 0.2s;
+            box-shadow:0 4px 12px rgba(0,0,0,0.08); white-space:nowrap;
+        }
+        .tooltip.visible { opacity:1; transform:translate(-50%,-140%); }
+
+        .control-panel {
+            position:absolute; top:24px; left:24px; z-index:20;
+            background:var(--surface); border:1px solid #ddd; border-radius:12px;
+            padding:16px 18px; font-size:0.8rem; display:flex; flex-direction:column;
+            gap:10px; min-width:280px; font-family:'JetBrains Mono',monospace;
+            pointer-events:auto; box-shadow:0 4px 20px rgba(0,0,0,0.05);
+        }
+        .control-panel label { display:flex; justify-content:space-between; align-items:center; gap:8px; font-weight:500; }
+        .control-panel input[type="range"] { width:100px; accent-color:var(--accent); }
+        .control-panel button {
+            background:var(--accent); border:none; color:white; padding:6px 14px;
+            border-radius:6px; cursor:pointer; font-weight:700; font-size:0.75rem;
+            font-family:'JetBrains Mono',monospace; transition:background 0.2s;
+        }
+        .control-panel button:hover { background:#1a252f; }
+        .value-display { font-weight:700; }
+        .dash-badge {
+            display:inline-block; padding:2px 8px; border-radius:10px;
+            font-size:0.7rem; font-weight:700; background:#ecf0f1; color:#2c3e50;
+            margin-left:4px; transition:0.2s;
+        }
+        .dash-badge.on { background:#2ecc71; color:white; }
+        .dash-badge.hover { background:#f39c12; color:white; }
+        .dash-badge.off { background:#bdc3c7; color:#2c3e50; }
+
+        .title-area {
+            position:absolute; top:24px; left:50%; transform:translateX(-50%);
+            z-index:10; pointer-events:none; text-align:center;
+            font-family:'JetBrains Mono',monospace;
+        }
+        .title-area h1 { font-size:1.8rem; font-weight:700; color:#1a1a1a; margin:0; }
+        .title-area .subtitle { font-size:0.8rem; color:#888; letter-spacing:0.1em; margin-top:4px; }
+
+        .hint {
+            position:absolute; bottom:20px; left:50%; transform:translateX(-50%);
+            z-index:10; pointer-events:none; font-size:0.75rem; color:#888;
+            background:rgba(255,255,255,0.7); padding:4px 14px;
+            border-radius:20px; border:1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+    <div class="graph-window" id="graphWindow">
+        <div class="bg-grid"></div>
+        <div class="particles-layer" id="particlesLayer"></div>
+        <svg id="graph-svg"></svg>
+        <div class="hint">🖱 拖拽节点 · 滚轮缩放 · R键重置</div>
+    </div>
+
+    <div class="control-panel">
+        <div><span>📊 节点</span> <span class="value-display" id="nodeCountDisplay">30</span></div>
+        <label><input type="range" id="nodeSlider" min="10" max="200" value="30" step="10"></label>
+
+        <div><span>🟢 节点大小</span> <span class="value-display" id="nodeScaleDisplay">1.0</span>x</div>
+        <label><input type="range" id="nodeScaleSlider" min="0.5" max="2.0" value="1.0" step="0.1"></label>
+
+        <!-- 社区数量滑块 -->
+        <div><span>🧬 社区数</span> <span class="value-display" id="communityDisplay">2</span></div>
+        <label><input type="range" id="communitySlider" min="1" max="5" value="2" step="1"></label>
+
+        <div><span>📏 窗口宽</span> <span class="value-display" id="winWidthDisplay">100</span>%</div>
+        <label><input type="range" id="winWidthSlider" min="50" max="100" value="100" step="5"></label>
+
+        <div><span>📏 窗口高</span> <span class="value-display" id="winHeightDisplay">100</span>%</div>
+        <label><input type="range" id="winHeightSlider" min="50" max="100" value="100" step="5"></label>
+
+        <div><span>🔍 缩放</span> <span class="value-display" id="scaleDisplay">1.0</span>x</div>
+        <label><input type="range" id="scaleSlider" min="0.5" max="2.0" value="1.0" step="0.1"></label>
+
+        <div style="display:flex; gap:6px;">
+            <button id="applyBtn">🔄 重新生成</button>
+            <button id="dashToggleBtn">〰️ 虚线 <span id="dashBadge" class="dash-badge on">开</span></button>
+        </div>
+    </div>
+
+    <div class="title-area">
+        <h1>知识图谱</h1>
+        <div class="subtitle">COMMUNITY · KNOWLEDGE · GRAPH</div>
+    </div>
+    <div class="tooltip" id="tooltip"></div>
+
+    <script>
+        (() => {
+            const windowEl = document.getElementById('graphWindow');
+            const svg = d3.select('#graph-svg');
+            const svgEl = svg.node();
+            const tooltip = document.getElementById('tooltip');
+
+            const nodeSlider = document.getElementById('nodeSlider');
+            const nodeCountDisplay = document.getElementById('nodeCountDisplay');
+            const nodeScaleSlider = document.getElementById('nodeScaleSlider');
+            const nodeScaleDisplay = document.getElementById('nodeScaleDisplay');
+            const communitySlider = document.getElementById('communitySlider');
+            const communityDisplay = document.getElementById('communityDisplay');
+            const winWidthSlider = document.getElementById('winWidthSlider');
+            const winWidthDisplay = document.getElementById('winWidthDisplay');
+            const winHeightSlider = document.getElementById('winHeightSlider');
+            const winHeightDisplay = document.getElementById('winHeightDisplay');
+            const scaleSlider = document.getElementById('scaleSlider');
+            const scaleDisplay = document.getElementById('scaleDisplay');
+            const applyBtn = document.getElementById('applyBtn');
+            const dashToggleBtn = document.getElementById('dashToggleBtn');
+            const dashBadge = document.getElementById('dashBadge');
+
+            let simulation, mainGroup, linkGroup, flowGroup, nodeGroup, linkLines, flowLines;
+            let graphData = { nodes: [], links: [] };
+            let nodeMap = new Map();
+            let draggingNodes = new Set();
+            let floatTime = 0, lastFloatUpdate = 0, floatAnimationId;
+            let dashMode = 'on';
+            const LABEL_SIZE_THRESHOLD = 14;
+            let scaleFactor = 1;
+            let nodeScale = 1.0;
+            let communityCount = 2;
+            let winWidthPercent = 100, winHeightPercent = 100;
+
+            const zoom = d3.zoom().scaleExtent([0.3, 3]).on('zoom', (e) => {
+                zoomTransform = e.transform;
+                mainGroup.attr('transform', e.transform);
+            });
+            let zoomTransform = d3.zoomIdentity;
+            svg.call(zoom);
+
+            function generateParticles() {
+                const layer = document.getElementById('particlesLayer');
+                layer.innerHTML = '';
+                for (let i=0; i<25; i++) {
+                    const p = document.createElement('div');
+                    p.className = 'bg-particle';
+                    p.style.left = Math.random()*100+'%';
+                    p.style.top = Math.random()*100+'%';
+                    p.style.animationDelay = Math.random()*15+'s';
+                    layer.appendChild(p);
+                }
+            }
+            generateParticles();
+
+            // 生成多社区数据
+            function generateData(nodeCount, communities) {
+                const nodes = [];
+                const categories = ['core','paradigm','application','tech','model'];
+                const colors = ['#f39c12','#3498db','#2ecc71','#9b59b6','#1abc9c'];
+                const namesPool = ['AI','ML','DL','NLP','CV','Robot','NN','RL','SL','UL',
+                    'Transformer','CNN','RNN','GAN','GPT','BERT','LLM','图像','语音','知识',
+                    '感知','推理','规划','控制','分类','回归','聚类','降维','嵌入','注意力'];
+
+                // 分配社区
+                const communitySize = Math.floor(nodeCount / communities);
+                const remainder = nodeCount % communities;
+                let nodeIdx = 0;
+                for (let c = 0; c < communities; c++) {
+                    const size = communitySize + (c < remainder ? 1 : 0);
+                    for (let i = 0; i < size; i++) {
+                        const globalIdx = nodeIdx++;
+                        const catIdx = globalIdx % categories.length;
+                        const rawRadius = 7 + Math.random() * 10;
+                        nodes.push({
+                            id: `n${globalIdx}`,
+                            name: globalIdx < namesPool.length ? namesPool[globalIdx] : `节点${globalIdx}`,
+                            category: categories[catIdx],
+                            radius: rawRadius * nodeScale,
+                            color: colors[catIdx],
+                            community: c
+                        });
+                    }
+                }
+
+                const links = [];
+                const degree = new Array(nodes.length).fill(0);
+                const isSingleLink = new Array(nodes.length).fill(false);
+                const singleRatio = 0.4;
+                // 单线节点随机选取（保护每个社区的前2个节点）
+                const protectedSet = new Set();
+                for (let c = 0; c < communities; c++) {
+                    const first = nodes.findIndex(n => n.community === c);
+                    if (first !== -1) protectedSet.add(first);
+                }
+                const candidates = nodes.map((_,i)=>i).filter(i => !protectedSet.has(i));
+                const shuffled = candidates.sort(() => Math.random()-0.5);
+                const singleCount = Math.floor(nodes.length * singleRatio);
+                for (let i=0; i<Math.min(singleCount, shuffled.length); i++) {
+                    isSingleLink[shuffled[i]] = true;
+                }
+
+                const linkSet = new Set();
+                function addLink(srcIdx, tgtIdx) {
+                    if (srcIdx === tgtIdx) return false;
+                    const key = srcIdx < tgtIdx ? `${srcIdx},${tgtIdx}` : `${tgtIdx},${srcIdx}`;
+                    if (linkSet.has(key)) return false;
+                    linkSet.add(key);
+                    links.push({ source: nodes[srcIdx].id, target: nodes[tgtIdx].id });
+                    degree[srcIdx]++;
+                    degree[tgtIdx]++;
+                    return true;
+                }
+
+                // 社区内生成树
+                for (let c = 0; c < communities; c++) {
+                    const commNodes = nodes.map((n,i) => ({n,i})).filter(x => x.n.community === c).map(x => x.i);
+                    if (commNodes.length < 2) continue;
+                    for (let i = 1; i < commNodes.length; i++) {
+                        addLink(commNodes[i], commNodes[i-1]);
+                    }
+                }
+
+                // 社区内额外连线（非单线节点）
+                for (let i = 0; i < nodes.length; i++) {
+                    if (isSingleLink[i]) continue;
+                    const myComm = nodes[i].community;
+                    const commNodes = nodes.map((n,j)=>({n,j})).filter(x => x.n.community === myComm && x.j !== i).map(x => x.j);
+                    const extra = Math.floor(Math.random() * 3) + 1;
+                    for (let j = 0; j < extra; j++) {
+                        if (commNodes.length === 0) break;
+                        const target = commNodes[Math.floor(Math.random() * commNodes.length)];
+                        if (!isSingleLink[target] || degree[target] === 0) {
+                            addLink(i, target);
+                        }
+                    }
+                }
+
+                // 社区间桥接（每个社区选1-2个节点连接其他社区）
+                for (let c = 0; c < communities; c++) {
+                    const commNodes = nodes.map((n,i)=>({n,i})).filter(x => x.n.community === c).map(x => x.i);
+                    if (commNodes.length === 0) continue;
+                    const bridgeCount = Math.min(2, Math.ceil(commNodes.length * 0.2));
+                    for (let b = 0; b < bridgeCount; b++) {
+                        const src = commNodes[Math.floor(Math.random() * commNodes.length)];
+                        // 随机选择另一个社区
+                        let targetComm = c;
+                        while (targetComm === c) targetComm = Math.floor(Math.random() * communities);
+                        const targetNodes = nodes.map((n,i)=>({n,i})).filter(x => x.n.community === targetComm).map(x => x.i);
+                        if (targetNodes.length > 0) {
+                            const tgt = targetNodes[Math.floor(Math.random() * targetNodes.length)];
+                            addLink(src, tgt);
+                        }
+                    }
+                }
+
+                // 确保单线节点度数=1
+                for (let i = 0; i < nodes.length; i++) {
+                    if (isSingleLink[i] && degree[i] > 1) {
+                        const nodeLinks = [];
+                        for (let k=0; k<links.length; k++) {
+                            if (links[k].source === nodes[i].id || links[k].target === nodes[i].id) nodeLinks.push(k);
+                        }
+                        const keep = nodeLinks[Math.floor(Math.random()*nodeLinks.length)];
+                        for (let k of nodeLinks) {
+                            if (k !== keep) {
+                                const otherId = links[k].source === nodes[i].id ? links[k].target : links[k].source;
+                                const otherIdx = nodes.findIndex(n => n.id === otherId);
+                                if (otherIdx !== -1) degree[otherIdx]--;
+                                degree[i]--;
+                                links.splice(k,1);
+                                for (let m=0; m<nodeLinks.length; m++) if (nodeLinks[m] > k) nodeLinks[m]--;
+                            }
+                        }
+                    }
+                }
+
+                return { nodes, links };
+            }
+
+            function initNodeProps(nodes) {
+                nodeMap.clear();
+                nodes.forEach(n => {
+                    nodeMap.set(n.id, n);
+                    n.floatAmp = n.radius*0.08 + Math.random()*0.8;
+                    n.floatFreq = 0.6 + Math.random()*0.5;
+                    n.floatPhase = Math.random()*Math.PI*2;
+                    n.floatPhaseY = Math.random()*Math.PI*2;
+                });
+            }
+
+            function buildGraph() {
+                if (simulation) simulation.stop();
+                svg.selectAll('g').remove();
+                mainGroup = svg.append('g').attr('class','main-group').attr('transform', zoomTransform);
+                linkGroup = mainGroup.append('g');
+                flowGroup = mainGroup.append('g');
+                nodeGroup = mainGroup.append('g');
+                draggingNodes.clear();
+
+                const winWidth = windowEl.clientWidth;
+                const winHeight = windowEl.clientHeight;
+
+                // 初始位置按社区粗略分散
+                graphData.nodes.forEach(n => {
+                    const angle = (n.community / communityCount) * Math.PI * 2;
+                    const radius = Math.min(winWidth, winHeight) * 0.25;
+                    const cx = winWidth/2 + Math.cos(angle) * radius * 0.6;
+                    const cy = winHeight/2 + Math.sin(angle) * radius * 0.6;
+                    n.x = cx + (Math.random()-0.5) * 100;
+                    n.y = cy + (Math.random()-0.5) * 100;
+                    n._baseX = n.x;
+                    n._baseY = n.y;
+                });
+
+                graphData.links.forEach(l => {
+                    l.source = nodeMap.get(l.source) || l.source;
+                    l.target = nodeMap.get(l.target) || l.target;
+                });
+
+                linkLines = linkGroup.selectAll('line').data(graphData.links).join('line')
+                    .attr('class','link-line').attr('stroke','#b0b0b0').attr('stroke-width',1);
+
+                if (dashMode !== 'off') {
+                    flowLines = flowGroup.selectAll('line').data(graphData.links).join('line')
+                        .attr('class','flow-line').classed('hidden-flow', dashMode === 'hover');
+                } else {
+                    flowLines = flowGroup.selectAll('line').data([]).join('line');
+                }
+
+                const nodeGroups = nodeGroup.selectAll('g.node-group').data(graphData.nodes).join('g')
+                    .attr('class','node-group').attr('data-id', d => d.id);
+
+                nodeGroups.append('circle').attr('class','node-circle')
+                    .attr('r', d => d.radius).attr('fill', d => d.color).attr('stroke','rgba(0,0,0,0.2)');
+
+                nodeGroups.append('text').attr('class','node-label')
+                    .attr('dy', d => d.radius+13).text(d => d.name)
+                    .style('fill', d => d.radius >= LABEL_SIZE_THRESHOLD ? '#000' : '#666')
+                    .style('font-weight', d => d.radius >= LABEL_SIZE_THRESHOLD ? '700' : '400')
+                    .style('font-size', d => d.radius >= LABEL_SIZE_THRESHOLD ? '11px' : '9px')
+                    .style('display', graphData.nodes.length > 100 ? 'none' : 'block');
+
+                simulation = d3.forceSimulation(graphData.nodes)
+                    .force('link', d3.forceLink(graphData.links).id(d => d.id)
+                        .distance(d => {
+                            const srcComm = d.source.community;
+                            const tgtComm = d.target.community;
+                            const base = (d.source.radius||10) + (d.target.radius||10);
+                            // 同一社区距离短，不同社区距离长
+                            return srcComm === tgtComm ? base + 60 : base + 200;
+                        })
+                        .strength(0.5))
+                    .force('charge', d3.forceManyBody().strength(d => -120 - (d.radius||10)*2))
+                    .force('center', d3.forceCenter(winWidth/2, winHeight/2).strength(0.05))
+                    .force('collide', d3.forceCollide().radius(d => (d.radius||10)+15).strength(0.9))
+                    .alphaDecay(0.02)
+                    .velocityDecay(0.35)
+                    .on('tick', () => ticked(winWidth, winHeight));
+
+                const dragBehavior = d3.drag()
+                    .on('start', function(event,d) {
+                        if (!event.active) simulation.alphaTarget(0.3).restart();
+                        draggingNodes.add(d.id);
+                        const coords = zoomTransform.invert(d3.pointer(event, svgEl));
+                        d.fx = coords[0]; d.fy = coords[1];
+                        d._baseX = d.fx; d._baseY = d.fy;
+                        d3.select(this).classed('dragging',true);
+                        d3.select(this).select('.node-circle').transition().duration(100).attr('r', d.radius*1.25);
+                        showTooltip(event,d);
+                    })
+                    .on('drag', function(event,d) {
+                        const coords = zoomTransform.invert(d3.pointer(event, svgEl));
+                        d.fx = coords[0]; d.fy = coords[1];
+                        d._baseX = d.fx; d._baseY = d.fy;
+                        updateTooltipPosition(event);
+                    })
+                    .on('end', function(event,d) {
+                        if (!event.active) simulation.alphaTarget(0);
+                        draggingNodes.delete(d.id);
+                        setTimeout(()=>{ if(!draggingNodes.has(d.id)){d.fx=null;d.fy=null;} },100);
+                        d3.select(this).classed('dragging',false);
+                        d3.select(this).select('.node-circle').transition().duration(200).attr('r', d.radius);
+                        hideTooltip();
+                    });
+                nodeGroups.call(dragBehavior);
+
+                nodeGroups.on('mouseenter', function(event,d) {
+                    if(draggingNodes.has(d.id)) return;
+                    d3.select(this).select('.node-circle').transition().duration(150).attr('r', d.radius*1.2);
+                    highlightRelatedLinks(d, true);
+                    showTooltip(event,d);
+                }).on('mouseleave', function(event,d) {
+                    if(draggingNodes.has(d.id)) return;
+                    d3.select(this).select('.node-circle').transition().duration(200).attr('r', d.radius);
+                    highlightRelatedLinks(d, false);
+                    hideTooltip();
+                }).on('mousemove', function(event,d) {
+                    if(!draggingNodes.has(d.id)) updateTooltipPosition(event);
+                });
+
+                simulation.alpha(0.6).restart();
+            }
+
+            function ticked(winWidth, winHeight) {
+                const now = performance.now();
+                const interval = graphData.nodes.length > 100 ? 50 : 16;
+                if (now - lastFloatUpdate > interval) {
+                    floatTime = now*0.001;
+                    lastFloatUpdate = now;
+                }
+                graphData.nodes.forEach(n => {
+                    const r = n.radius||10;
+                    if (n.x < r) n.x = r;
+                    if (n.x > winWidth - r) n.x = winWidth - r;
+                    if (n.y < r) n.y = r;
+                    if (n.y > winHeight - r) n.y = winHeight - r;
+                    if (!draggingNodes.has(n.id)) { n._baseX = n.x; n._baseY = n.y; }
+                });
+                nodeGroup.selectAll('.node-group').each(function(d) {
+                    let dx = d._baseX, dy = d._baseY;
+                    if (!draggingNodes.has(d.id)) {
+                        dx += Math.sin(floatTime*d.floatFreq + d.floatPhase) * d.floatAmp;
+                        dy += Math.cos(floatTime*d.floatFreq*1.3 + d.floatPhaseY) * d.floatAmp;
+                    }
+                    d3.select(this).attr('transform', `translate(${dx},${dy})`);
+                });
+                linkLines.attr('x1', d => { let s=d.source, bx=s._baseX; bx+=Math.sin(floatTime*s.floatFreq+s.floatPhase)*s.floatAmp; return bx; })
+                         .attr('y1', d => { let s=d.source, by=s._baseY; by+=Math.cos(floatTime*s.floatFreq*1.3+s.floatPhaseY)*s.floatAmp; return by; })
+                         .attr('x2', d => { let t=d.target, bx=t._baseX; bx+=Math.sin(floatTime*t.floatFreq+t.floatPhase)*t.floatAmp; return bx; })
+                         .attr('y2', d => { let t=d.target, by=t._baseY; by+=Math.cos(floatTime*t.floatFreq*1.3+t.floatPhaseY)*t.floatAmp; return by; });
+                if (dashMode !== 'off' && flowLines && flowLines.size()) {
+                    flowLines.attr('x1', d => linkLines.filter(ld => ld===d).attr('x1'))
+                             .attr('y1', d => linkLines.filter(ld => ld===d).attr('y1'))
+                             .attr('x2', d => linkLines.filter(ld => ld===d).attr('x2'))
+                             .attr('y2', d => linkLines.filter(ld => ld===d).attr('y2'));
+                }
+            }
+
+            function highlightRelatedLinks(d, highlight) {
+                const connectedIds = new Set([d.id]);
+                graphData.links.forEach(l => {
+                    const s = l.source.id || l.source, t = l.target.id || l.target;
+                    if (s === d.id) connectedIds.add(t);
+                    if (t === d.id) connectedIds.add(s);
+                });
+                linkLines.each(function(ld) {
+                    const s = ld.source.id||ld.source, t = ld.target.id||ld.target;
+                    const el = d3.select(this);
+                    if (highlight && (s===d.id||t===d.id)) el.classed('link-highlight',true).classed('link-dim',false);
+                    else if (highlight) el.classed('link-dim',true).classed('link-highlight',false);
+                    else el.classed('link-highlight',false).classed('link-dim',false);
+                });
+                if (dashMode === 'hover' && flowLines) {
+                    flowLines.each(function(ld) {
+                        const s = ld.source.id||ld.source, t = ld.target.id||ld.target;
+                        const el = d3.select(this);
+                        if (highlight && (s===d.id||t===d.id)) el.classed('hidden-flow',false);
+                        else if (highlight) el.classed('hidden-flow',true);
+                        else el.classed('hidden-flow',true);
+                    });
+                }
+            }
+
+            function showTooltip(e,d) {
+                tooltip.innerHTML = `<strong>${d.name}</strong> <span style="color:#888">${d.category}</span>`;
+                tooltip.classList.add('visible');
+                updateTooltipPosition(e);
+            }
+            function updateTooltipPosition(e) {
+                const tx = e.clientX || (e.sourceEvent?.clientX) || 0;
+                const ty = e.clientY || (e.sourceEvent?.clientY) || 0;
+                tooltip.style.left = tx+'px'; tooltip.style.top = ty+'px';
+            }
+            function hideTooltip() { tooltip.classList.remove('visible'); }
+
+            function rebuild() {
+                const nodeCount = parseInt(nodeSlider.value,10);
+                communityCount = parseInt(communitySlider.value,10);
+                nodeScale = parseFloat(nodeScaleSlider.value);
+                graphData = generateData(nodeCount, communityCount);
+                initNodeProps(graphData.nodes);
+                buildGraph();
+            }
+
+            function resetView() {
+                graphData.nodes.forEach(n => { n.fx=null; n.fy=null; });
+                draggingNodes.clear();
+                simulation.alpha(0.5).restart();
+                hideTooltip();
+                svg.transition().duration(300).call(zoom.transform, d3.zoomIdentity);
+                if (dashMode==='hover' && flowLines) flowLines.classed('hidden-flow',true);
+            }
+
+            function floatLoop() { floatAnimationId = requestAnimationFrame(floatLoop); }
+            floatAnimationId = requestAnimationFrame(floatLoop);
+
+            // 滑块事件
+            nodeSlider.addEventListener('input', ()=> nodeCountDisplay.textContent = nodeSlider.value);
+            nodeScaleSlider.addEventListener('input', ()=> nodeScaleDisplay.textContent = parseFloat(nodeScaleSlider.value).toFixed(1));
+            communitySlider.addEventListener('input', ()=> communityDisplay.textContent = communitySlider.value);
+            winWidthSlider.addEventListener('input', ()=> winWidthDisplay.textContent = winWidthSlider.value+'%');
+            winHeightSlider.addEventListener('input', ()=> winHeightDisplay.textContent = winHeightSlider.value+'%');
+            scaleSlider.addEventListener('input', ()=> scaleDisplay.textContent = parseFloat(scaleSlider.value).toFixed(1));
+
+            nodeScaleSlider.addEventListener('change', rebuild);
+            communitySlider.addEventListener('change', rebuild);
+            winWidthSlider.addEventListener('change', ()=>{
+                winWidthPercent = parseInt(winWidthSlider.value,10);
+                windowEl.style.setProperty('--window-width-percent', winWidthPercent);
+                rebuild();
+            });
+            winHeightSlider.addEventListener('change', ()=>{
+                winHeightPercent = parseInt(winHeightSlider.value,10);
+                windowEl.style.setProperty('--window-height-percent', winHeightPercent);
+                rebuild();
+            });
+            scaleSlider.addEventListener('change', ()=>{
+                scaleFactor = parseFloat(scaleSlider.value);
+                windowEl.style.setProperty('--scale-factor', scaleFactor);
+            });
+            applyBtn.addEventListener('click', rebuild);
+            dashToggleBtn.addEventListener('click', ()=>{
+                dashMode = dashMode === 'on' ? 'hover' : (dashMode === 'hover' ? 'off' : 'on');
+                dashBadge.textContent = dashMode==='on'?'开':(dashMode==='hover'?'悬停':'关');
+                dashBadge.className = 'dash-badge '+dashMode;
+                rebuild();
+            });
+
+            window.addEventListener('keydown', e => { if(e.key.toLowerCase()==='r') resetView(); });
+
+            // 初始化
+            nodeCountDisplay.textContent = nodeSlider.value;
+            nodeScaleDisplay.textContent = '1.0';
+            communityDisplay.textContent = communitySlider.value;
+            winWidthDisplay.textContent = '100%';
+            winHeightDisplay.textContent = '100%';
+            scaleDisplay.textContent = '1.0';
+            updateDashUI = ()=>{
+                dashBadge.textContent = dashMode==='on'?'开':(dashMode==='hover'?'悬停':'关');
+                dashBadge.className = 'dash-badge '+dashMode;
+            };
+            updateDashUI();
+            rebuild();
+        })();
+    </script>
+</body>
+</html>

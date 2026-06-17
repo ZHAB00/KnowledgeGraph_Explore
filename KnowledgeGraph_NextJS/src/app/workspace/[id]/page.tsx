@@ -248,10 +248,10 @@ export default function WorkspacePage() {
         <div className="border-t border-border px-3 py-2 space-y-2">
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted w-10">缩放</span>
-            <input type="range" min="20" max="1000" defaultValue="100" id="zoom-slider"
+            <input type="range" min="20" max="1000" defaultValue="50" id="zoom-slider"
               onChange={e => { const v = parseInt(e.target.value); (window as any).__graphZoom?.zoomTo(v); }}
               className="flex-1 h-1 accent-[#2c3e6b]" />
-            <span className="text-xs text-muted w-10" id="zoom-label">100%</span>
+            <span className="text-xs text-muted w-10" id="zoom-label">50%</span>
           </div>
           <button onClick={() => (window as any).__graphZoom?.restart()}
             className="w-full rounded border border-border px-2 py-1 text-xs text-muted hover:bg-bg hover:text-text transition-colors">

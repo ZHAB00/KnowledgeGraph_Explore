@@ -53,13 +53,17 @@ def _extract_one_type_sync(text: str, entity_type: str) -> dict:
 
 
 def _build_snapshot(workspace_id: str, merged: dict) -> GraphSnapshot:
-    from services.embedder import Embedder
-    t0 = time.time()
-    embedder = Embedder()
-    labels = [n["label"] for n in merged["nodes"]]
-    vectors = embedder.embed_batch(labels)
-    elapsed = time.time() - t0
-    log(f"  [Embedding] {len(labels)} 个节点向量化, 耗时 {elapsed:.1f}s")
+    embedding_cache = {}
+    try:
+        from services.embedder import Embedder
+        t0 = time.time()
+        embedder = Embedder()
+        labels = [n["label"] for n in merged["nodes"]]
+        vectors = embedder.embed_batch(labels)
+        embedding_cache = {merged["nodes"][i]["id"]: vectors[i] for i in range(len(labels))}
+        log(f"  [Embedding] {len(labels)} 个节点向量化, 耗时 {time.time() - t0:.1f}s")
+    except Exception as e:
+        log(f"  [Embedding] 跳过 — 模型下载失败 ({e})")
 
     return GraphSnapshot(
         workspace_id=workspace_id,
@@ -67,7 +71,7 @@ def _build_snapshot(workspace_id: str, merged: dict) -> GraphSnapshot:
                 metadata=n.get("metadata", {})) for n in merged["nodes"]],
         edges=[EdgeModel(source=e["source"], target=e["target"], label=e["label"],
                 weight=e.get("weight", 1.0)) for e in merged["edges"]],
-        embedding_cache={merged["nodes"][i]["id"]: vectors[i] for i in range(len(labels))},
+        embedding_cache=embedding_cache,
     )
 
 

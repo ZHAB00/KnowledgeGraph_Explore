@@ -139,7 +139,7 @@ export default function GraphCanvas({ nodes, edges, onNodeClick }: Props) {
 
     // Center-based zoom (not cursor-based)
     const zoom = (d3 as any).zoom()
-      .scaleExtent([0.5, 3])
+      .scaleExtent([0.3, 3])
       .wheelDelta((e: any) => -e.deltaY * 0.002)
       .filter((e: any) => e.type === "wheel" || e.type === "mousedown")
       .on("zoom", (e: any) => {
@@ -153,6 +153,8 @@ export default function GraphCanvas({ nodes, edges, onNodeClick }: Props) {
         }
       });
     svg.call(zoom);
+    // Initial zoom 50%
+    svg.call((zoom as any).transform, (d3 as any).zoomIdentity.translate(W / 4, H / 4).scale(0.5));
 
     // Expose zoom control to sidebar
     (window as any).__graphZoom = {
@@ -161,7 +163,7 @@ export default function GraphCanvas({ nodes, edges, onNodeClick }: Props) {
       },
       restart: () => {
         // Re-run force layout from scratch
-        const spreadR = Math.min(W, H) * 0.4;
+        const spreadR = Math.min(W, H) * 0.55;
         simNodes.forEach(d => {
           const a = Math.random() * 2 * Math.PI;
           const r = Math.random() * spreadR;
@@ -219,7 +221,7 @@ export default function GraphCanvas({ nodes, edges, onNodeClick }: Props) {
       .force("charge", (d3 as any).forceManyBody().strength(FORCE.charge))
       .force("collide", (d3 as any).forceCollide().radius((d: any) => d.radius + FORCE.collidePad))
       .force("center", (d3 as any).forceCenter(W / 2, H / 2).strength(FORCE.centerStr))
-      .force("radial", (d3 as any).forceRadial(Math.min(W, H) * 0.35, W/2, H/2).strength(0.1));
+      .force("radial", (d3 as any).forceRadial(Math.min(W, H) * 0.55, W/2, H/2).strength(0.1));
 
     // ResizeObserver: update center when sidebar toggles
     let obs: ResizeObserver | null = null;
@@ -228,7 +230,7 @@ export default function GraphCanvas({ nodes, edges, onNodeClick }: Props) {
         const nw = svgRef.current?.clientWidth || 800;
         const nh = svgRef.current?.clientHeight || 600;
         sim.force("center", (d3 as any).forceCenter(nw / 2, nh / 2).strength(FORCE.centerStr));
-        sim.force("radial", (d3 as any).forceRadial(Math.min(nw, nh) * 0.35, nw/2, nh/2).strength(0.1));
+        sim.force("radial", (d3 as any).forceRadial(Math.min(nw, nh) * 0.45, nw/2, nh/2).strength(0.1));
         sim.alpha(0.1).restart();
       });
       obs.observe(svgRef.current);
