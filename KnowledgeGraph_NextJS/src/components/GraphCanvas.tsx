@@ -22,6 +22,14 @@ const COLORS: Record<string, string> = {
 };
 const DEFAULT_COLOR = "#64748b";
 
+// ── Tunable force parameters ──
+const FORCE = {
+  linkDist: 50,       // extra distance beyond node radii
+  charge: -20,       // repulsion strength (more negative = further apart)
+  collidePad: 10,     // extra collision padding beyond node radius
+  centerStr: 0.15,    // center attraction strength (0-1)
+};
+
 export default function GraphCanvas({ nodes, edges, onNodeClick }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const bgRef = useRef<HTMLCanvasElement>(null);
@@ -97,8 +105,8 @@ export default function GraphCanvas({ nodes, edges, onNodeClick }: Props) {
       const d = deg.get(n.id) || 0;
       return {
         id: n.id, label: n.label.slice(0, 18), type: n.type, degree: d,
-        radius: 4 + (d / maxD) * 12, // 6-22px
-        x: 0, y: 0,
+        radius: 4 + (d / maxD) * 12,
+        x: Math.random() * 800, y: Math.random() * 600,
       };
     });
 
@@ -129,37 +137,116 @@ export default function GraphCanvas({ nodes, edges, onNodeClick }: Props) {
 
     const g = svg.append("g");
 
+    // Center-based zoom (not cursor-based)
     const zoom = (d3 as any).zoom()
       .scaleExtent([0.5, 3])
-      .on("zoom", (e: any) => g.attr("transform", e.transform.toString()));
+      .wheelDelta((e: any) => -e.deltaY * 0.002)
+      .filter((e: any) => e.type === "wheel" || e.type === "mousedown")
+      .on("zoom", (e: any) => {
+        if (e.sourceEvent?.type === "wheel") {
+          // Center-based zoom
+          const s = e.transform.k;
+          const tx = W / 2 * (1 - s) + e.transform.x * s / (e.transform.k / s);
+          g.attr("transform", `translate(${W / 2 * (1 - s)},${H / 2 * (1 - s)}) scale(${s})`);
+        } else {
+          g.attr("transform", e.transform.toString());
+        }
+      });
     svg.call(zoom);
 
+    // Expose zoom control to sidebar
+    (window as any).__graphZoom = {
+      centerOn: (x: number, y: number) => {
+        svg.transition().duration(400).call((zoom as any).transform, (d3 as any).zoomIdentity.translate(W / 2 - x * 1.8, H / 2 - y * 1.8).scale(1.8));
+      },
+      restart: () => {
+        // Re-run force layout from scratch
+        const spreadR = Math.min(W, H) * 0.4;
+        simNodes.forEach(d => {
+          const a = Math.random() * 2 * Math.PI;
+          const r = Math.random() * spreadR;
+          d.x = W/2 + Math.cos(a) * r;
+          d.y = H/2 + Math.sin(a) * r;
+        });
+        sim.alpha(0.5).restart();
+        // After layout settles, auto-fit
+        const onEnd = () => {
+          const b = g.node()?.getBBox();
+          if (b && b.width > 0 && b.height > 0) {
+            const sc = 0.85 * Math.min(W / b.width, H / b.height);
+            const cx = b.x + b.width / 2, cy = b.y + b.height / 2;
+            svg.transition().duration(600).call(
+              (zoom as any).transform,
+              (d3 as any).zoomIdentity.translate(W / 2 - cx * sc, H / 2 - cy * sc).scale(sc)
+            );
+            window.dispatchEvent(new CustomEvent("zoom-changed", { detail: Math.round(sc * 100) }));
+          }
+          sim.on("end", null); // one-shot
+        };
+        sim.on("end", onEnd);
+      },
+      fit: () => {
+        const b = g.node()?.getBBox();
+        if (b && b.width > 0 && b.height > 0) {
+          const sc = 0.85 * Math.min(W / b.width, H / b.height);
+          const cx = b.x + b.width / 2, cy = b.y + b.height / 2;
+          svg.transition().duration(600).call(
+            (zoom as any).transform,
+            (d3 as any).zoomIdentity.translate(W / 2 - cx * sc, H / 2 - cy * sc).scale(sc)
+          );
+          window.dispatchEvent(new CustomEvent("zoom-changed", { detail: Math.round(sc * 100) }));
+        }
+      },
+      zoomTo: (pct: number) => {
+        const s = pct / 100;
+        svg.transition().duration(300).call(
+          (zoom as any).transform,
+          (d3 as any).zoomIdentity.translate(W / 2 * (1 - s), H / 2 * (1 - s)).scale(s)
+        );
+        window.dispatchEvent(new CustomEvent("zoom-changed", { detail: pct }));
+      },
+    };
+
     const sim = (d3 as any).forceSimulation(simNodes)
-      .force("link", (d3 as any).forceLink(simLinks as any).id(d => d.id)
+      .force("link", (d3 as any).forceLink(simLinks as any).id((d: any) => d.id)
         .distance((l: any) => {
           const sid = l.source.id || l.source;
           const tid = l.target.id || l.target;
           const s = nodeMap.get(sid);
           const t = nodeMap.get(tid);
-          return (s?.radius || 7) + (t?.radius || 7) + 60;
+          return (s?.radius || 7) + (t?.radius || 7) + FORCE.linkDist;
         }))
-      .force("charge", (d3 as any).forceManyBody().strength(-150))
-      .force("collide", (d3 as any).forceCollide().radius((d: any) => d.radius + 15))
-      .force("center", (d3 as any).forceCenter(W / 2, H / 2).strength(0.05));
+      .force("charge", (d3 as any).forceManyBody().strength(FORCE.charge))
+      .force("collide", (d3 as any).forceCollide().radius((d: any) => d.radius + FORCE.collidePad))
+      .force("center", (d3 as any).forceCenter(W / 2, H / 2).strength(FORCE.centerStr))
+      .force("radial", (d3 as any).forceRadial(Math.min(W, H) * 0.35, W/2, H/2).strength(0.1));
+
+    // ResizeObserver: update center when sidebar toggles
+    let obs: ResizeObserver | null = null;
+    if (svgRef.current) {
+      obs = new ResizeObserver(() => {
+        const nw = svgRef.current?.clientWidth || 800;
+        const nh = svgRef.current?.clientHeight || 600;
+        sim.force("center", (d3 as any).forceCenter(nw / 2, nh / 2).strength(FORCE.centerStr));
+        sim.force("radial", (d3 as any).forceRadial(Math.min(nw, nh) * 0.35, nw/2, nh/2).strength(0.1));
+        sim.alpha(0.1).restart();
+      });
+      obs.observe(svgRef.current);
+    }
 
     // Links
     const link = g.append("g").selectAll("line")
       .data(simLinks)
       .join("line")
       .attr("stroke", "#d1d5db")
-      .attr("stroke-width", l => Math.min(l.weight * 1.5, 4))
+      .attr("stroke-width", (l: any) => Math.min(l.weight * 1.5, 4))
       .attr("stroke-opacity", 0.6);
 
     // Link labels
     const linkLabel = g.append("g").selectAll("text")
       .data(simLinks)
       .join("text")
-      .text(d => d.label)
+      .text((d: any) => d.label)
       .attr("font-size", 9)
       .attr("font-family", "'JetBrains Mono', monospace")
       .attr("fill", "#9ca3af")
@@ -171,125 +258,142 @@ export default function GraphCanvas({ nodes, edges, onNodeClick }: Props) {
     const node = g.append("g").selectAll("g")
       .data(simNodes)
       .join("g")
+      .attr("data-id", (d: any) => d.id)
       .attr("cursor", "grab")
       .call(
         (d3 as any).drag()
-          .on("start", (e: any, d) => {
+          .on("start", (e: any, d: any) => {
             if (!e.active) sim.alphaTarget(0.3).restart();
             d.fx = d.x; d.fy = d.y;
-            d3.select(e.sourceEvent.target.closest("g")).select("circle").attr("stroke-width", 3);
           })
-          .on("drag", (e: any, d) => { d.fx = e.x; d.fy = e.y; })
-          .on("end", (e: any, d) => {
+          .on("drag", (e: any, d: any) => { d.fx = e.x; d.fy = e.y; })
+          .on("end", (e: any, d: any) => {
             if (!e.active) sim.alphaTarget(0);
             d.fx = null; d.fy = null;
-            d3.select(e.sourceEvent.target.closest("g")).select("circle").attr("stroke-width", 1.5);
           })
       ) as any;
 
     // Node circles
     node.append("circle")
-      .attr("r", d => d.radius)
-      .attr("fill", d => COLORS[d.type] || DEFAULT_COLOR)
+      .attr("r", (d: any) => d.radius)
+      .attr("fill", (d: any) => COLORS[d.type] || DEFAULT_COLOR)
       .attr("stroke", "#fafafa")
       .attr("stroke-width", 1.5);
 
     // Node labels
     node.append("text")
-      .text(d => d.label)
+      .text((d: any) => d.label)
       .attr("font-family", "'JetBrains Mono', monospace")
-      .attr("font-size", d => d.radius >= 14 ? 11 : 9)
-      .attr("font-weight", d => d.radius >= 14 ? "600" : "400")
-      .attr("fill", d => d.radius >= 14 ? "#000" : "#666")
+      .attr("font-size", (d: any) => d.radius >= 14 ? 11 : 9)
+      .attr("font-weight", (d: any) => d.radius >= 14 ? "600" : "400")
+      .attr("fill", (d: any) => d.radius >= 14 ? "#000" : "#666")
       .attr("text-anchor", "middle")
-      .attr("dy", d => d.radius + 13);
+      .attr("dy", (d: any) => d.radius + 13);
 
-    // Hover
-    node.on("mouseenter", function(_, d) {
-      const el = d3.select(this);
-      el.select("circle").transition().duration(150).attr("r", d.radius * 1.3);
-      el.select("text").transition().duration(150).attr("fill", "#000");
-
-      // Highlight connected links
+    // Shared highlight logic
+    let selectedId: string | null = null;
+    function applyHighlight(hoverId: string | null) {
+      const id = hoverId || selectedId;
+      if (!id) {
+        node.select("circle").transition().duration(150).attr("r", (d: any) => d.radius).attr("opacity", 1);
+        node.select("text").transition().duration(150).attr("fill", (d: any) => d.radius >= 14 ? "#000" : "#666");
+        link.transition().duration(150).attr("stroke-opacity", 0.6).attr("stroke", "#d1d5db");
+        linkLabel.transition().duration(150).attr("opacity", 0);
+        g.select("#tooltip").remove();
+        return;
+      }
       const connected = new Set<string>();
       simLinks.forEach(l => {
-        if ((l.source as SimNode).id === d.id || (l.target as SimNode).id === d.id) {
-          connected.add((l.source as SimNode).id === d.id ? (l.target as SimNode).id : (l.source as SimNode).id);
+        if ((l.source as any as SimNode).id === id || (l.target as any as SimNode).id === id) {
+          connected.add((l.source as any as SimNode).id === id ? (l.target as any as SimNode).id : (l.source as any as SimNode).id);
         }
       });
-      node.select("circle").attr("opacity", n => n.id === d.id || connected.has(n.id) ? 1 : 0.15);
-      link.attr("stroke-opacity", l =>
-        (l.source as SimNode).id === d.id || (l.target as SimNode).id === d.id ? 0.9 : 0.05
-      ).attr("stroke", l =>
-        (l.source as SimNode).id === d.id || (l.target as SimNode).id === d.id ? "#374151" : "#d1d5db"
+      node.select("circle").attr("opacity", (n: any) => n.id === id || connected.has(n.id) ? 1 : 0.15);
+      node.select("circle").attr("r", (d: any) => d.id === id || connected.has(d.id) ? d.radius * 1.15 : d.radius);
+      node.select("text").attr("fill", (d: any) => d.id === id || connected.has(d.id) ? "#000" : (d.radius >= 14 ? "#000" : "#666"));
+      link.attr("stroke-opacity", (l: any) =>
+        (l.source as any as SimNode).id === id || (l.target as any as SimNode).id === id ? 0.9 : 0.05
+      ).attr("stroke", (l: any) =>
+        (l.source as any as SimNode).id === id || (l.target as any as SimNode).id === id ? "#374151" : "#d1d5db"
       );
-      linkLabel.attr("opacity", l =>
-        (l.source as SimNode).id === d.id || (l.target as SimNode).id === d.id ? 1 : 0
+      linkLabel.attr("opacity", (l: any) =>
+        (l.source as any as SimNode).id === id || (l.target as any as SimNode).id === id ? 1 : 0
       );
+    }
 
-      // Tooltip
-      g.select("#tooltip").remove();
-      const tip = g.append("text")
-        .attr("id", "tooltip")
-        .datum(d)
-        .attr("x", d.x)
-        .attr("y", d.y - d.radius - 20)
-        .attr("text-anchor", "middle")
-        .attr("font-family", "'JetBrains Mono', monospace")
-        .attr("font-size", 10)
-        .attr("fill", "#1a1a1a")
-        .attr("font-weight", "600")
-        .text(d.label + " (" + d.type + ")");
+    // Hover (temporary, reverts to selection)
+    node.on("mouseenter", function(_: any, d: any) {
+      if (selectedId) return; // don't override selection
+      applyHighlight(d.id);
     }).on("mouseleave", function() {
-      node.select("circle").transition().duration(150).attr("r", d => d.radius).attr("opacity", 1);
-      node.select("text").transition().duration(150).attr("fill", d => d.radius >= 14 ? "#000" : "#666");
-      link.transition().duration(150).attr("stroke-opacity", 0.6).attr("stroke", "#d1d5db");
-      linkLabel.transition().duration(150).attr("opacity", 0);
-      g.select("#tooltip").remove();
-    }).on("click", function(_, d) {
+      if (selectedId) return;
+      applyHighlight(null);
+    }).on("click", function(_: any, d: any) {
+      selectedId = d.id;
+      applyHighlight(d.id);
       clickRef.current(d.id);
+      const s_ = 1.5;
+      svg.transition().duration(500).call(
+        (zoom as any).transform,
+        (d3 as any).zoomIdentity.translate(W / 2 - d.x * s_, H / 2 - d.y * s_).scale(s_)
+      );
     });
+
+    // Use native DOM for background click/dblclick — avoids D3 event conflicts
+    const svgEl = svg.node();
+    let bgTimer: any = null;
+    function onBgClick(e: MouseEvent) {
+      if (e.target !== svgEl) return; // only background, not nodes/edges/labels
+      selectedId = null;
+      applyHighlight(null);
+      if (bgTimer) {
+        clearTimeout(bgTimer); bgTimer = null;
+        const b = g.node()?.getBBox();
+        if (b && b.width > 0 && b.height > 0) {
+          const sc = 0.85 * Math.min(W / b.width, H / b.height);
+          const cx = b.x + b.width / 2, cy = b.y + b.height / 2;
+          svg.transition().duration(600).call(
+            (zoom as any).transform,
+            (d3 as any).zoomIdentity.translate(W / 2 - cx * sc, H / 2 - cy * sc).scale(sc)
+          );
+        }
+      } else {
+        bgTimer = setTimeout(() => { bgTimer = null; }, 350);
+      }
+    }
+    svgEl?.addEventListener("click", onBgClick);
+
 
     // Tick
     sim.on("tick", () => {
       link
-        .attr("x1", d => (d.source as SimNode).x)
-        .attr("y1", d => (d.source as SimNode).y)
-        .attr("x2", d => (d.target as SimNode).x)
-        .attr("y2", d => (d.target as SimNode).y);
+        .attr("x1", (d: any) => (d.source as any as SimNode).x)
+        .attr("y1", (d: any) => (d.source as any as SimNode).y)
+        .attr("x2", (d: any) => (d.target as any as SimNode).x)
+        .attr("y2", (d: any) => (d.target as any as SimNode).y);
       linkLabel
-        .attr("x", d => ((d.source as SimNode).x + (d.target as SimNode).x) / 2)
-        .attr("y", d => ((d.source as SimNode).y + (d.target as SimNode).y) / 2);
-      node.attr("transform", d => `translate(${d.x},${d.y})`);
+        .attr("x", (d: any) => ((d.source as any as SimNode).x + (d.target as any as SimNode).x) / 2)
+        .attr("y", (d: any) => ((d.source as any as SimNode).y + (d.target as any as SimNode).y) / 2);
+      // Clamp positions
+      simNodes.forEach(d => {
+        if (d.fx == null) { d.x = Math.max(-200, Math.min(W + 200, d.x)); d.y = Math.max(-200, Math.min(H + 200, d.y)); }
+      });
+      node.attr("transform", (d: any) => `translate(${d.x},${d.y})`);
       const tip = g.select("#tooltip");
       if (!tip.empty() && tip.datum()) {
-        const td = tip.datum() as SimNode;
+        const td = tip.datum() as any as SimNode;
         tip.attr("x", td.x).attr("y", td.y - td.radius - 20);
       }
     });
 
-    // Wait for simulation to settle, then gently fit to container
-    const fitTimer = setTimeout(() => {
-      const bounds = g.node()?.getBBox();
-      if (bounds && bounds.width > 0 && bounds.height > 0) {
-        const scale = 0.8 * Math.min(W / bounds.width, H / bounds.height);
-        const cx = bounds.x + bounds.width / 2;
-        const cy = bounds.y + bounds.height / 2;
-        svg.transition().duration(800).call(
-          (zoom as any).transform,
-          (d3 as any).zoomIdentity.translate(W / 2 - cx * scale, H / 2 - cy * scale).scale(scale)
-        );
-      }
-    }, 2500);
-
-    return () => { sim.stop(); clearTimeout(fitTimer); };
+    return () => { sim.stop(); if (obs) obs.disconnect(); svgEl?.removeEventListener("click", onBgClick); delete (window as any).__graphZoom; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataKey]);
 
   return (
     <div className="relative h-full w-full" style={{ background: "#fafafa" }}>
       <canvas ref={bgRef} className="absolute inset-0 w-full h-full" style={{ zIndex: 0 }} />
-      <svg ref={svgRef} className="absolute inset-0 w-full h-full" style={{ zIndex: 1 }} />
+      <svg ref={svgRef} id="graph-svg" className="absolute inset-0 w-full h-full" style={{ zIndex: 1 }} />
     </div>
   );
 }

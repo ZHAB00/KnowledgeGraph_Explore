@@ -4,8 +4,7 @@ services:
   nginx:
     build: ./nginx
     ports:
-      - "80:80"
-      - "443:443"
+      - "8765:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
@@ -15,19 +14,22 @@ services:
 
   nextjs:
     build: ./KnowledgeGraph_NextJS
-    environment:
-      - NEXT_PUBLIC_API_URL=
     restart: unless-stopped
 
   fastapi:
     build: ./KnowledgeGraph_FastAPI
     environment:
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - DEEPSEEK_MODEL=${DEEPSEEK_MODEL:-deepseek-chat}
       - SECRET_KEY=${SECRET_KEY}
-      - TEST_USERNAME=${TEST_USERNAME}
-      - TEST_PASSWORD=${TEST_PASSWORD}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - TEST_USERNAME=${TEST_USERNAME:-interviewer}
+      - TEST_PASSWORD=${TEST_PASSWORD:-demo123}
+      - HF_ENDPOINT=${HF_ENDPOINT:-https://hf-mirror.com}
+      - LANCE_DB_PATH=/app/lancedb_data
+      - KMP_DUPLICATE_LIB_OK=TRUE
     volumes:
-      - ./lancedb_data:/app/lancedb_data
+      - lancedb_data:/app/lancedb_data
     restart: unless-stopped
+
+volumes:
+  lancedb_data:

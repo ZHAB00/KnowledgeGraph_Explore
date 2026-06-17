@@ -4,7 +4,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 class Chunker:
     """语义感知的文本分块器。优先在段落、句子边界切断，保持语义完整性。"""
 
-    def __init__(self, chunk_size: int = 1500, overlap: int = 150):
+    def __init__(self, chunk_size: int = 6000, overlap: int = 200):
         """
         chunk_size: 每块最大 token 数（approx，中文约 1 char ≈ 0.5 token）
         overlap: 块间重叠 token 数

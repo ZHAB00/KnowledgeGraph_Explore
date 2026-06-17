@@ -46,11 +46,17 @@ class KnowledgeGraphExtractor:
 
     def extract_batch(self, chunks: list[str], entity_type: str) -> list[dict]:
         results = []
+        total = len(chunks)
         for i, chunk in enumerate(chunks):
-            logger.info(f"Extracting chunk {i + 1}/{len(chunks)}")
+            print(f"    块 {i+1}/{total} ({len(chunk)} 字符)...", end=" ")
             result = self.extract(chunk, entity_type)
             if "_error" not in result:
+                nodes = len(result.get("nodes", []))
+                edges = len(result.get("edges", []))
+                print(f"✓ {nodes}n/{edges}e")
                 result = self._reindex(result, prefix=f"c{i}")
+            else:
+                print(f"✗ {result.get('_error', 'unknown')[:60]}")
             results.append(result)
         return results
 

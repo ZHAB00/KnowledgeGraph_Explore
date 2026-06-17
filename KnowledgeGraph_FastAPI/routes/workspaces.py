@@ -150,7 +150,7 @@ def delete_workspace(ws_id: str, authorization: str = Header(...)):
 
 
 @router.post("/demo")
-def create_demo(authorization: str = Header(...)):
+async def create_demo(authorization: str = Header(...)):
     user = _auth(authorization)
     ws = Workspace(user_id=user, name="Demo: AI行业速览")
     db.create_workspace(ws)
@@ -165,6 +165,5 @@ def create_demo(authorization: str = Header(...)):
 
     fr = FileRecord(workspace_id=ws.id, filename="sample.txt", content=content)
     db.add_file(fr)
-    # Also trigger extraction for demo
     asyncio.create_task(run_extraction(ws.id))
     return {"workspace_id": ws.id}

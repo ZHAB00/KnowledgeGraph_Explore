@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head><meta charset="UTF-8"><title>BG Compare</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#fff;padding:16px;font-family:-apple-system,sans-serif}
+h1{font-family:serif;margin-bottom:16px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.card{border:1px solid #e5e5e5;border-radius:8px;overflow:hidden}
+.card h3{padding:8px 12px;background:#fff;border-bottom:1px solid #e5e5e5;font-size:14px;font-weight:500}
+.can{position:relative;height:300px;background:#fafafa}
+.can canvas{position:absolute;top:0;left:0;width:100%;height:100%;display:block}
+.can .label{position:absolute;bottom:8px;right:12px;font-size:11px;color:#9ca3af;z-index:1}
+</style></head>
+<body>
+<h1>Dynamic Background Compare</h1>
+<div class="grid">
+<div class="card"><h3>A - Floating Particles (25 particles, proximity lines)</h3>
+<div class="can"><canvas id="a"></canvas><span class="label">25 particles</span></div></div>
+<div class="card"><h3>B - Breathing Glow (2 radial blobs, slow drift)</h3>
+<div class="can"><canvas id="b"></canvas><span class="label">2 blobs</span></div></div>
+<div class="card"><h3>C - Mixed (blobs + 15 particles + faint edges)</h3>
+<div class="can"><canvas id="c"></canvas><span class="label">blobs + particles</span></div></div>
+</div>
+<script>
+(function setA(){
+var c=document.getElementById('a');
+var ctx=c.getContext('2d');
+var w=c.width=c.offsetWidth,h=c.height=c.offsetHeight;
+window.addEventListener('resize',function(){w=c.width=c.offsetWidth;h=c.height=c.offsetHeight;});
+var ps=[];
+for(var i=0;i<25;i++) ps.push({x:Math.random()*w,y:Math.random()*h,vx:(Math.random()-0.5)*0.3,vy:(Math.random()-0.5)*0.3});
+(function loop(){
+ctx.clearRect(0,0,w,h);
+for(var i=0;i<ps.length;i++){var p=ps[i];p.x+=p.vx;p.y+=p.vy;if(p.x<0)p.x=w;if(p.x>w)p.x=0;if(p.y<0)p.y=h;if(p.y>h)p.y=0;
+ctx.beginPath();ctx.arc(p.x,p.y,1.5,0,Math.PI*2);ctx.fillStyle='rgba(100,116,139,0.5)';ctx.fill();}
+for(var i=0;i<ps.length;i++){for(var j=i+1;j<ps.length;j++){var dx=ps[i].x-ps[j].x,dy=ps[i].y-ps[j].y,dist=Math.sqrt(dx*dx+dy*dy);
+if(dist<120){ctx.beginPath();ctx.moveTo(ps[i].x,ps[i].y);ctx.lineTo(ps[j].x,ps[j].y);
+ctx.strokeStyle='rgba(148,163,184,'+(0.15*(1-dist/120))+')';ctx.lineWidth=0.5;ctx.stroke();}}}
+requestAnimationFrame(loop);})();
+})();
+</script>
+<script>
+(function setB(){
+var c=document.getElementById('b');
+var ctx=c.getContext('2d');
+var w=c.width=c.offsetWidth,h=c.height=c.offsetHeight;
+window.addEventListener('resize',function(){w=c.width=c.offsetWidth;h=c.height=c.offsetHeight;});
+var blobs=[{x:0.3,y:0.4,dx:0.0001,dy:0.00015,r:0.35,c:[200,190,180]},{x:0.7,y:0.6,dx:-0.00012,dy:-0.0001,r:0.3,c:[180,185,195]}];
+(function loop(){
+ctx.clearRect(0,0,w,h);
+for(var i=0;i<blobs.length;i++){var b=blobs[i];b.x+=b.dx;b.y+=b.dy;
+if(b.x>1.1)b.dx*=-1;if(b.x<-0.1)b.dx*=-1;if(b.y>1.1)b.dy*=-1;if(b.y<-0.1)b.dy*=-1;
+var g=ctx.createRadialGradient(b.x*w,b.y*h,0,b.x*w,b.y*h,b.r*w);
+g.addColorStop(0,'rgba('+b.c[0]+','+b.c[1]+','+b.c[2]+',0.08)');
+g.addColorStop(0.5,'rgba('+b.c[0]+','+b.c[1]+','+b.c[2]+',0.03)');
+g.addColorStop(1,'transparent');ctx.fillStyle=g;ctx.fillRect(0,0,w,h);}
+requestAnimationFrame(loop);})();
+})();
+</script>
+<script>
+(function setC(){
+var c=document.getElementById('c');
+var ctx=c.getContext('2d');
+var w=c.width=c.offsetWidth,h=c.height=c.offsetHeight;
+window.addEventListener('resize',function(){w=c.width=c.offsetWidth;h=c.height=c.offsetHeight;});
+var blobs=[{x:0.25,y:0.45,dx:0.00008,dy:0.0001,r:0.3,c:[195,185,175]},{x:0.75,y:0.55,dx:-0.0001,dy:-0.00008,r:0.28,c:[175,180,190]}];
+var ps=[];
+for(var i=0;i<15;i++) ps.push({x:Math.random()*w,y:Math.random()*h,vx:(Math.random()-0.5)*0.25,vy:(Math.random()-0.5)*0.25});
+(function loop(){
+ctx.clearRect(0,0,w,h);
+for(var i=0;i<blobs.length;i++){var b=blobs[i];b.x+=b.dx;b.y+=b.dy;
+if(b.x>1.1)b.dx*=-1;if(b.x<-0.1)b.dx*=-1;if(b.y>1.1)b.dy*=-1;if(b.y<-0.1)b.dy*=-1;
+var g=ctx.createRadialGradient(b.x*w,b.y*h,0,b.x*w,b.y*h,b.r*w);
+g.addColorStop(0,'rgba('+b.c[0]+','+b.c[1]+','+b.c[2]+',0.06)');
+g.addColorStop(0.5,'rgba('+b.c[0]+','+b.c[1]+','+b.c[2]+',0.02)');
+g.addColorStop(1,'transparent');ctx.fillStyle=g;ctx.fillRect(0,0,w,h);}
+for(var i=0;i<ps.length;i++){var p=ps[i];p.x+=p.vx;p.y+=p.vy;if(p.x<0)p.x=w;if(p.x>w)p.x=0;if(p.y<0)p.y=h;if(p.y>h)p.y=0;
+ctx.beginPath();ctx.arc(p.x,p.y,1,0,Math.PI*2);ctx.fillStyle='rgba(100,116,139,0.35)';ctx.fill();}
+for(var i=0;i<ps.length;i++){for(var j=i+1;j<ps.length;j++){var dx=ps[i].x-ps[j].x,dy=ps[i].y-ps[j].y,dist=Math.sqrt(dx*dx+dy*dy);
+if(dist<140){ctx.beginPath();ctx.moveTo(ps[i].x,ps[i].y);ctx.lineTo(ps[j].x,ps[j].y);
+ctx.strokeStyle='rgba(148,163,184,'+(0.08*(1-dist/140))+')';ctx.lineWidth=0.4;ctx.stroke();}}}
+requestAnimationFrame(loop);})();
+})();
+</script>
+</body></html>
