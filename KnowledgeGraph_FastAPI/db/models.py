@@ -81,7 +81,7 @@ class WorkspaceResponse(BaseModel):
     entity_type: str
     status: str
     created_at: str
-    file_count: int
+    file_count: int = 0
 
 
 class ExtractRequest(BaseModel):
@@ -96,6 +96,11 @@ class StatusResponse(BaseModel):
     status: str
     phase: str
     progress: float
+    file_count: int = 0
+    node_count_named: int = 0
+    edge_count_named: int = 0
+    node_count_concept: int = 0
+    edge_count_concept: int = 0
     error_message: Optional[str] = None
     raw_output: Optional[str] = None
 

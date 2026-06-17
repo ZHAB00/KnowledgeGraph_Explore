@@ -20,7 +20,7 @@ class KnowledgeGraphExtractor:
             return {"nodes": [], "edges": []}
 
         prompt_template = get_prompt(entity_type)
-        prompt = prompt_template.format(text=text)
+        prompt = prompt_template.replace("{text}", text)
         llm = self.provider.get_llm(temperature=0.1)
 
         last_raw = ""
@@ -63,6 +63,15 @@ class KnowledgeGraphExtractor:
         end = raw.rfind("}")
         if start != -1 and end != -1:
             raw = raw[start:end + 1]
+        # Try direct parse first
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            pass
+        # Fix common LLM JSON issues
+        raw = re.sub(r",\s*([}\]])", r"\1", raw)
+        raw = re.sub(r"}\s*{", "},{", raw)
+        raw = re.sub(r"\]\s*{", "],{", raw)
         return json.loads(raw)
 
     def _validate(self, result: dict):

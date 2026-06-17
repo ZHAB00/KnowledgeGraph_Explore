@@ -1,4 +1,9 @@
 import os
+import warnings
+# Fix OMP DLL conflict on Windows — must run before any torch import
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+# Silence pydantic model_ namespace warnings from LanceDB
+warnings.filterwarnings("ignore", message='Field "model_name"')
 from pathlib import Path
 
 # 自动加载同目录下的 .env 文件
@@ -14,6 +19,7 @@ if _env_path.exists():
                     os.environ[key] = value
 
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
+DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-me")
 TEST_USERNAME = os.getenv("TEST_USERNAME", "interviewer")
 TEST_PASSWORD = os.getenv("TEST_PASSWORD", "demo123")

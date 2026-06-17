@@ -1,3 +1,6 @@
+import os
+# Must be set BEFORE importing sentence_transformers/torch
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 from sentence_transformers import SentenceTransformer
 import numpy as np
 import logging
@@ -9,6 +12,10 @@ _embedder: "Embedder | None" = None
 
 class Embedder:
     def __init__(self, model_name: str = "BAAI/bge-small-zh"):
+        # Use HF mirror for China users
+        hf_endpoint = os.getenv("HF_ENDPOINT", "")
+        if hf_endpoint:
+            os.environ["HF_ENDPOINT"] = hf_endpoint
         self.model = SentenceTransformer(model_name)
 
     def embed(self, text: str) -> list[float]:

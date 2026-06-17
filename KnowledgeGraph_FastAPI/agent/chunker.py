@@ -1,37 +1,39 @@
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+
 class Chunker:
-    def __init__(self, max_chars: int = 12000, overlap: int = 300):
-        self.max_chars = max_chars
-        self.overlap = overlap
+    """语义感知的文本分块器。优先在段落、句子边界切断，保持语义完整性。"""
+
+    def __init__(self, chunk_size: int = 1500, overlap: int = 150):
+        """
+        chunk_size: 每块最大 token 数（approx，中文约 1 char ≈ 0.5 token）
+        overlap: 块间重叠 token 数
+        """
+        self.splitter = RecursiveCharacterTextSplitter(
+            separators=[
+                "\n\n",     # 段落边界（最高优先级）
+                "\n",       # 换行
+                "。",       # 中文句号
+                "！",       # 中文感叹号
+                "？",       # 中文问号
+                "；",       # 中文分号
+                ". ",       # 英文句号
+                "! ",       # 英文感叹号
+                "? ",       # 英文问号
+                "; ",       # 英文分号
+                "，",       # 中文逗号
+                ", ",       # 英文逗号
+                " ",        # 空格
+                "",         # 字符级（最后手段）
+            ],
+            chunk_size=chunk_size,
+            chunk_overlap=overlap,
+            length_function=len,  # 用字符数估算
+            keep_separator=True,  # 保留分隔符，不丢失语义标记
+        )
 
     def split(self, text: str) -> list[str]:
         if not text.strip():
             return []
-
-        paragraphs = text.split("\n\n")
-        chunks = []
-        current = ""
-        overlap_buffer = ""
-
-        for para in paragraphs:
-            para = para.strip()
-            if not para:
-                continue
-
-            if len(current) + len(para) + 2 <= self.max_chars:
-                current = current + "\n\n" + para if current else para
-            else:
-                if current:
-                    chunks.append(current)
-                    overlap_buffer = current[-self.overlap:] if len(current) > self.overlap else current
-                    current = overlap_buffer + "\n\n" + para if overlap_buffer else para
-                else:
-                    for i in range(0, len(para), self.max_chars - self.overlap):
-                        chunk = para[i:i + self.max_chars]
-                        chunks.append(chunk)
-                    current = ""
-                    overlap_buffer = ""
-
-        if current.strip():
-            chunks.append(current)
-
+        chunks = self.splitter.split_text(text)
         return chunks if chunks else [text]

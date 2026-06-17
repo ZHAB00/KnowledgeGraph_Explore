@@ -16,7 +16,7 @@ def semantic_search(
 ):
     get_current_user(authorization)
 
-    snap = db.get_snapshot(ws_id)
+    snap = db.get_snapshot(ws_id, "named")
     if not snap:
         raise HTTPException(status_code=404, detail="No graph found for this workspace")
 

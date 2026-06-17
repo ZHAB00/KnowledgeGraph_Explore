@@ -35,10 +35,20 @@ export interface SearchResult {
   subgraph_edges: GraphEdge[];
 }
 
+export interface FileResult {
+  file_id: string;
+  filename: string;
+  result_named: "pending" | "processing" | "ok" | "error";
+  result_concept: "pending" | "processing" | "ok" | "error";
+  error_named?: string;
+  error_concept?: string;
+}
+
 export interface ExtractStatus {
   status: "processing" | "ready" | "error";
   phase: string;
   progress: number;
   error_message?: string;
   raw_output?: string;
+  file_results?: FileResult[];
 }

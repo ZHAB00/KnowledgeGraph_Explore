@@ -13,7 +13,7 @@ export function createGraphConfig(
     elements,
     style: GRAPH_STYLES,
     layout: {
-      name: "cose-bilkent",
+      name: "cose",
       animate: !prefersReduced,
       animationDuration: 1000,
       nodeRepulsion: 4500,
