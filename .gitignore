@@ -12,3 +12,5 @@ dist/
 *.tsbuildinfo
 
 docs/
+nginx/
+docker-compose.yml
