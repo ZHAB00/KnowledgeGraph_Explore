@@ -8,21 +8,13 @@ export default function ExportButton({ filename }: { filename: string }) {
     const w = svgEl.clientWidth;
     const h = svgEl.clientHeight;
 
-    // Clone and inline all styles (foreignObject for fonts causes CORS taint)
     const clone = svgEl.cloneNode(true) as SVGSVGElement;
-
-    // Replace external font references with system fallback
-    clone.querySelectorAll("text").forEach((t) => {
-      (t as SVGTextElement).style.fontFamily = "sans-serif";
-    });
-
+    clone.querySelectorAll("text").forEach((t: any) => { t.style.fontFamily = "sans-serif"; });
     clone.setAttribute("width", String(w));
     clone.setAttribute("height", String(h));
 
-    // Add white background
     const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    rect.setAttribute("width", "100%");
-    rect.setAttribute("height", "100%");
+    rect.setAttribute("width", "100%"); rect.setAttribute("height", "100%");
     rect.setAttribute("fill", "#fafafa");
     clone.insertBefore(rect, clone.firstChild);
 
@@ -33,12 +25,10 @@ export default function ExportButton({ filename }: { filename: string }) {
     const img = new Image();
     img.onload = () => {
       const canvas = document.createElement("canvas");
-      canvas.width = w * 2;
-      canvas.height = h * 2;
+      canvas.width = w * 2; canvas.height = h * 2;
       const ctx = canvas.getContext("2d")!;
       ctx.scale(2, 2);
-      ctx.fillStyle = "#fafafa";
-      ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = "#fafafa"; ctx.fillRect(0, 0, w, h);
       ctx.drawImage(img, 0, 0, w, h);
       URL.revokeObjectURL(url);
       canvas.toBlob((b) => {

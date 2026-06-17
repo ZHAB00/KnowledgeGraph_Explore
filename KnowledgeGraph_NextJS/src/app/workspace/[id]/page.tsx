@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
-import { getGraph, getExtractStatus, listWorkspaces, uploadFile, createWorkspace } from "@/lib/api";
+import { getGraph, getExtractStatus, listWorkspaces, uploadFile, createWorkspace, deleteWorkspace } from "@/lib/api";
 import type { Workspace, GraphNode, GraphEdge, FileResult } from "@/lib/types";
 import GraphCanvas from "@/components/GraphCanvas";
 import NodeDetail from "@/components/NodeDetail";
@@ -69,6 +69,19 @@ export default function WorkspacePage() {
   }, [workspaceId]);
 
   // Shared polling — uses refs to avoid stale closures
+  // Sync zoom slider with graph
+  useEffect(() => {
+    const onZoom = (e: Event) => {
+      const pct = (e as CustomEvent).detail;
+      const slider = document.getElementById("zoom-slider") as HTMLInputElement | null;
+      const label = document.getElementById("zoom-label");
+      if (slider) slider.value = String(pct);
+      if (label) label.textContent = pct + "%";
+    };
+    window.addEventListener("zoom-changed", onZoom);
+    return () => window.removeEventListener("zoom-changed", onZoom);
+  }, []);
+
   const startPoll = useCallback(() => {
     if (pollRef.current) clearInterval(pollRef.current);
     let attempts = 0;
@@ -120,10 +133,37 @@ export default function WorkspacePage() {
 
   const isEmpty = files.length === 0 && sta.status === "ready";
 
+  const [sideOpen, setSideOpen] = useState(true);
+  const sideRef = useRef<HTMLDivElement>(null);
+
+  // Sidebar drag
+  useEffect(() => {
+    const el = sideRef.current; if (!el) return;
+    let startX = 0, startY = 0, origX = 0, origY = 0;
+    const onDown = (e: PointerEvent) => {
+      if ((e.target as HTMLElement).closest("button") || (e.target as HTMLElement).closest("input")) return;
+      el.setPointerCapture(e.pointerId);
+      startX = e.clientX; startY = e.clientY;
+      origX = el.offsetLeft; origY = el.offsetTop;
+    };
+    const onMove = (e: PointerEvent) => {
+      if (!el.hasPointerCapture(e.pointerId)) return;
+      el.style.left = (origX + e.clientX - startX) + "px";
+      el.style.top = (origY + e.clientY - startY) + "px";
+    };
+    el.addEventListener("pointerdown", onDown);
+    el.addEventListener("pointermove", onMove);
+    return () => { el.removeEventListener("pointerdown", onDown); el.removeEventListener("pointermove", onMove); };
+  }, []);
+
   return (
-    <div className="flex h-screen bg-bg">
-      {/* ═══ LEFT SIDEBAR ═══ */}
-      <aside className="w-64 flex-shrink-0 border-r border-border bg-surface flex flex-col h-full">
+    <div className="relative h-screen bg-bg overflow-hidden">
+      {/* ═══ FLOATING SIDEBAR (overlay, draggable) ═══ */}
+      {sideOpen && (
+      <aside
+        ref={sideRef}
+        className="absolute top-3 left-3 z-30 w-60 max-h-[calc(100vh-24px)] flex flex-col rounded-lg border border-border shadow-lg overflow-hidden"
+        style={{ backgroundColor: "rgba(255,255,255,0.94)", backdropFilter: "blur(12px)", touchAction: "none" }}>
         {/* workspace dropdown */}
         <div className="relative border-b border-border p-3">
           <button onClick={() => setDropOpen(!dropOpen)}
@@ -136,9 +176,15 @@ export default function WorkspacePage() {
           {dropOpen && (
             <div className="absolute left-3 right-3 top-full z-30 mt-1 max-h-48 overflow-y-auto rounded border border-border bg-surface shadow-lg">
               {workspaces.map((w: Workspace) => (
-                <button key={w.id} onClick={() => doSwitch(w.id)}
-                  className={"w-full px-3 py-2 text-left text-sm transition-colors duration-150 hover:bg-bg " + (w.id === workspaceId ? "bg-accent/5 font-medium text-accent" : "text-text")}>
-                  {w.name}</button>
+                <div key={w.id} className={"flex items-center group " + (w.id === workspaceId ? "bg-accent/5" : "")}>
+                  <button onClick={() => doSwitch(w.id)}
+                    className={"flex-1 px-3 py-2 text-left text-sm transition-colors duration-150 hover:bg-bg " + (w.id === workspaceId ? "font-medium text-accent" : "text-text")}>
+                    {w.name}</button>
+                  <button
+                    onClick={() => { if (confirm("删除工作区 \"" + w.name + "\"？所有数据将丢失。")) { deleteWorkspace(w.id).then(() => { setWorkspaces(prev => prev.filter(x => x.id !== w.id)); if (w.id === workspaceId) window.location.href = "/"; }); } }}
+                    className="opacity-0 group-hover:opacity-100 px-2 py-1 text-xs text-red-400 hover:text-red-600 hover:bg-red-50 transition-all">
+                    删除</button>
+                </div>
               ))}
               <div className="border-t border-border p-2">
                 {showNew ? (
@@ -157,7 +203,7 @@ export default function WorkspacePage() {
         </div>
 
         {/* search */}
-        <div className="px-3 pt-3"><SearchBar workspaceId={workspaceId} /></div>
+        <div className="px-3 pt-3"><SearchBar /></div>
 
         {/* file list */}
         <div className="flex-1 overflow-y-auto px-3 py-3">
@@ -170,7 +216,7 @@ export default function WorkspacePage() {
                 {files.map((f: FileEntry) => {
                   const fr = fileRes.find((x) => x.file_id === f.id);
                   // Default to "processing" when global status is processing but per-file results not yet available
-                  const defaultR = sta.status === "processing" ? "processing" : "pending";
+                  const defaultR = sta.status === "processing" ? "processing" : sta.status === "ready" ? "ok" : "pending";
                   const r = fr ? (gType === "named" ? fr.result_named : fr.result_concept) : defaultR;
                   const isErr = r === "error";
                   const isOk = r === "ok";
@@ -198,17 +244,44 @@ export default function WorkspacePage() {
           )}
         </div>
 
+        {/* Zoom controls + reset */}
+        <div className="border-t border-border px-3 py-2 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted w-10">缩放</span>
+            <input type="range" min="20" max="1000" defaultValue="50" id="zoom-slider"
+              onChange={e => { const v = parseInt(e.target.value); (window as any).__graphZoom?.zoomTo(v); }}
+              className="flex-1 h-1 accent-[#2c3e6b]" />
+            <span className="text-xs text-muted w-10" id="zoom-label">50%</span>
+          </div>
+          <button onClick={() => (window as any).__graphZoom?.restart()}
+            className="w-full rounded border border-border px-2 py-1 text-xs text-muted hover:bg-bg hover:text-text transition-colors">
+            ↺ 重构图
+          </button>
+        </div>
+
         {/* bottom: upload + export */}
         <div className="border-t border-border p-3 space-y-2">
           <button onClick={() => fileRef.current?.click()} disabled={uploading}
             className="w-full rounded px-3 py-2 text-xs font-medium text-white hover:opacity-90 active:scale-[0.97] transition-all duration-150 disabled:opacity-50 disabled:cursor-wait"
             style={{ backgroundColor: "#2c3e6b" }}>{uploading ? "上传中..." : "+ 上传文件"}</button>
-          <div className="flex gap-2"><ExportButton format="png" /><ExportButton format="svg" /></div>
+          <div className="flex gap-2"><ExportButton filename={ws.name} /></div>
+          <button onClick={() => setSideOpen(false)}
+            className="text-xs text-muted hover:text-text pt-1 transition-colors">— 收起</button>
         </div>
       </aside>
+      )}
 
-      {/* ═══ RIGHT: MAIN AREA ═══ */}
-      <main className="relative flex-1 flex flex-col">
+      {/* Toggle button when collapsed */}
+      {!sideOpen && (
+        <button onClick={() => setSideOpen(true)}
+          className="absolute top-3 left-3 z-30 px-3 py-1.5 rounded-lg border border-border text-xs text-muted hover:text-text transition-colors"
+          style={{ backgroundColor: "rgba(255,255,255,0.9)", backdropFilter: "blur(8px)" }}>
+          ☰ 面板
+        </button>
+      )}
+
+      {/* ═══ MAIN AREA (full screen) ═══ */}
+      <main className="absolute inset-0 flex flex-col">
         {/* top bar: graph type toggle */}
         <div className="flex items-center justify-center border-b border-border bg-surface px-4 py-2">
           <div className="inline-flex rounded border border-border overflow-hidden text-xs">

@@ -53,7 +53,7 @@ def _extract_one_type_sync(text: str, entity_type: str) -> dict:
 
 
 def _build_snapshot(workspace_id: str, merged: dict) -> GraphSnapshot:
-    embedding_cache = {}
+    embedding_cache: dict = {}
     try:
         from services.embedder import Embedder
         t0 = time.time()

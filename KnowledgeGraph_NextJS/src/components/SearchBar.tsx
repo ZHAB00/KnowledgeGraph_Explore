@@ -13,19 +13,16 @@ export default function SearchBar() {
 
     const lower = val.toLowerCase().trim();
     const groups = svg.querySelectorAll("g > g") as NodeListOf<HTMLElement>;
-    const lines = svg.querySelectorAll("line") as NodeListOf<HTMLElement>;
 
-    // Remove existing highlight rings
+    // Remove previous highlight rings
     svg.querySelectorAll(".search-ring").forEach((r: any) => r.remove());
-
     setFound(0);
+
     if (!lower) {
       groups.forEach((g: any) => { g.style.opacity = "1"; });
-      lines.forEach((l: any) => { l.style.opacity = "0.6"; });
       return;
     }
 
-    // Find matches
     let first: HTMLElement | null = null;
     const matchedIds: string[] = [];
     groups.forEach((g: any) => {
@@ -36,42 +33,31 @@ export default function SearchBar() {
       }
     });
     setFound(matchedIds.length);
+    if (!matchedIds.length) return;
 
-    if (matchedIds.length === 0) return;
-
-    // Add pulsing highlight ring to each matched node
     const idSet = new Set(matchedIds);
     groups.forEach((g: any) => {
       const id = g.getAttribute("data-id") || "";
       if (!idSet.has(id)) return;
-
       const circle = g.querySelector("circle");
       if (!circle) return;
       const r = parseFloat(circle.getAttribute("r") || "8");
-      const cx = "0";
-      const cy = "0";
-
-      // Create pulsing outer ring
       const ns = "http://www.w3.org/2000/svg";
       const ring = document.createElementNS(ns, "circle");
       ring.setAttribute("class", "search-ring");
-      ring.setAttribute("cx", cx);
-      ring.setAttribute("cy", cy);
+      ring.setAttribute("cx", "0");
+      ring.setAttribute("cy", "0");
       ring.setAttribute("r", String(r + 6));
       ring.setAttribute("fill", "none");
       ring.setAttribute("stroke", "#2563eb");
       ring.setAttribute("stroke-width", "2.5");
       ring.setAttribute("opacity", "0.8");
-      // Pulse animation
-      ring.innerHTML = `<animate attributeName="r" values="${r+4};${r+10};${r+4}" dur="1.2s" repeatCount="indefinite"/>
-        <animate attributeName="opacity" values="0.8;0.2;0.8" dur="1.2s" repeatCount="indefinite"/>`;
-
+      ring.innerHTML = '<animate attributeName="r" values="' + (r+4) + ';' + (r+10) + ';' + (r+4) + '" dur="1.2s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.8;0.2;0.8" dur="1.2s" repeatCount="indefinite"/>';
       g.insertBefore(ring, g.firstChild);
     });
 
-    // Center on first match
     if (first) {
-      const tr = first.getAttribute("transform") || "";
+      const tr = (first as any).getAttribute("transform") || "";
       const m = tr.match(/translate\(([\d.]+),\s*([\d.]+)\)/);
       if (m) (window as any).__graphZoom?.centerOn(+m[1], +m[2]);
     }
